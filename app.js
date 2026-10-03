@@ -21,7 +21,10 @@
   const el = {
     uf: document.querySelector('#uf'), cards: document.querySelector('#cards'), preview: document.querySelector('#screenPreview'),
     printSheet: document.querySelector('#printSheet'), sourceDot: document.querySelector('#sourceDot'), sourceTitle: document.querySelector('#sourceTitle'), sourceDetail: document.querySelector('#sourceDetail'),
-    printBtn: document.querySelector('#printBtn'), clearBtn: document.querySelector('#clearBtn'), backupBtn: document.querySelector('#backupBtn'), backupFile: document.querySelector('#backupFile')
+    printBtn: document.querySelector('#printBtn'), shareBtn: document.querySelector('#shareBtn'), clearBtn: document.querySelector('#clearBtn'), backupBtn: document.querySelector('#backupBtn'), backupFile: document.querySelector('#backupFile'),
+    progressText: document.querySelector('#progressText'), progressBar: document.querySelector('#progressBar'),
+    shareModal: document.querySelector('#shareModal'), shareCanvas: document.querySelector('#shareCanvas'), shareLoading: document.querySelector('#shareLoading'),
+    nativeShareBtn: document.querySelector('#nativeShareBtn'), downloadCardBtn: document.querySelector('#downloadCardBtn'), copyShareBtn: document.querySelector('#copyShareBtn'), toast: document.querySelector('#toast')
   };
 
   // As escolhas existem apenas durante a sessão atual da página.
@@ -78,7 +81,7 @@
       const searchValue = candidate
         ? `${candidate.n || vote.number || ''} — ${candidate.u || ''}`
         : (vote.number || '');
-      return `<article class="vote-card" data-id="${cfg.id}">
+      return `<article class="vote-card${candidate ? ' is-selected' : ''}" data-id="${cfg.id}">
         <div class="order">${cfg.order}</div>
         <div class="photo-frame" data-photo>
           ${img ? `<img src="${img}" alt="Foto de ${escapeAttr(candidate.u || '')}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=&quot;photo-empty&quot;>Foto indisponível</span>'">` : '<span class="photo-empty">Foto do<br>candidato</span>'}
@@ -129,6 +132,7 @@
   function clearCurrentSelection(cfg,card,number=''){
     state.votes[cfg.id]={number,candidate:null};
     saveState();
+    card.classList.remove('is-selected');
     updateCardPhoto(card,null,cfg);
     updatePreview();
     validateSenate();
@@ -248,6 +252,7 @@
 
   function selectCandidate(cfg,card,number,candidate,searchInput=null){
     state.votes[cfg.id]={number,candidate}; saveState();
+    card.classList.add('is-selected');
     const input=searchInput || card.querySelector('[data-search]');
     if(input) input.value=`${candidate.n || number || ''} — ${candidate.u || ''}`;
     card.querySelector('[data-info]').innerHTML=candidateInfoHtml(candidate);
@@ -283,7 +288,14 @@
     }).join('');
     target.innerHTML=`<div class="paper-head"><strong>MINHA COLINHA ELEITORAL — 2026</strong><small>${state.uf?`UF: ${escapeHtml(state.uf)} · `:''}Confira o nome na urna antes de confirmar</small></div>${rows}<div class="paper-footer">Projeto independente · Dados de candidaturas e fotos: TSE · Leve esta colinha em papel.</div>`;
   }
-  function updatePreview(){ renderPaper(el.preview); renderPaper(el.printSheet); }
+  function updatePreview(){ renderPaper(el.preview); renderPaper(el.printSheet); updateProgress(); }
+
+  function updateProgress(){
+    const complete=CARGOS.filter(cfg=>state.votes[cfg.id]?.candidate).length;
+    if(el.progressText) el.progressText.textContent=`${complete} de ${CARGOS.length}`;
+    if(el.progressBar) el.progressBar.style.width=`${(complete/CARGOS.length)*100}%`;
+    if(el.shareBtn) el.shareBtn.disabled=complete===0;
+  }
 
   function ensureData(key){
     if(window.__TSE_DATA__?.[key]) return Promise.resolve(window.__TSE_DATA__[key]);
@@ -345,6 +357,119 @@
     return true;
   }
 
+
+  function selectedVotes(){
+    return CARGOS.map(cfg=>({cfg,vote:state.votes[cfg.id]||{}})).filter(x=>x.vote.candidate);
+  }
+
+  function shareText(){
+    const rows=selectedVotes().map(({cfg,vote})=>`${cfg.short}: ${vote.number || vote.candidate?.n || ''} — ${vote.candidate?.u || ''}${vote.candidate?.p ? ` (${vote.candidate.p})` : ''}`);
+    return [`Minha Colinha Eleitoral 2026${state.uf ? ` — ${state.uf}` : ''}`, ...rows, '', 'Confira os dados na urna antes de confirmar.'].join('\n');
+  }
+
+  function wrapCanvasText(ctx,text,maxWidth){
+    const words=String(text||'').split(/\s+/).filter(Boolean); const lines=[]; let line='';
+    for(const word of words){
+      const test=line?`${line} ${word}`:word;
+      if(ctx.measureText(test).width>maxWidth && line){lines.push(line); line=word;} else line=test;
+    }
+    if(line) lines.push(line); return lines;
+  }
+
+  function roundRect(ctx,x,y,w,h,r,fill,stroke){
+    const rr=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+rr,y);ctx.arcTo(x+w,y,x+w,y+h,rr);ctx.arcTo(x+w,y+h,x,y+h,rr);ctx.arcTo(x,y+h,x,y,rr);ctx.arcTo(x,y,x+w,y,rr);ctx.closePath();
+    if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}
+  }
+
+  async function loadCanvasPhoto(url){
+    try{
+      const res=await fetch(url,{mode:'cors',cache:'force-cache'}); if(!res.ok) throw new Error();
+      const blob=await res.blob(); const objectUrl=URL.createObjectURL(blob);
+      try{const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=objectUrl;});return img;}finally{URL.revokeObjectURL(objectUrl);}
+    }catch{return null;}
+  }
+
+  function drawCoverImage(ctx,img,x,y,w,h,r=20){
+    const scale=Math.max(w/img.width,h/img.height); const sw=w/scale,sh=h/scale; const sx=(img.width-sw)/2,sy=(img.height-sh)/2;
+    ctx.save(); roundRect(ctx,x,y,w,h,r); ctx.clip(); ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h); ctx.restore();
+  }
+
+  async function generateShareCard(){
+    const canvas=el.shareCanvas,ctx=canvas.getContext('2d'); const W=canvas.width,H=canvas.height;
+    ctx.clearRect(0,0,W,H); ctx.fillStyle='#f4f6f4';ctx.fillRect(0,0,W,H);
+    const grad=ctx.createLinearGradient(0,0,W,420);grad.addColorStop(0,'#102f28');grad.addColorStop(1,'#0d624b');ctx.fillStyle=grad;ctx.fillRect(0,0,W,355);
+    ctx.fillStyle='#c9e3d9';ctx.font='700 28px system-ui, sans-serif';ctx.letterSpacing='2px';ctx.fillText('ELEIÇÕES 2026',64,72);
+    ctx.fillStyle='#ffffff';ctx.font='800 68px system-ui, sans-serif';ctx.fillText('Minha Colinha Eleitoral',64,154);
+    ctx.fillStyle='rgba(255,255,255,.78)';ctx.font='400 28px system-ui, sans-serif';ctx.fillText(state.uf?`UF ${state.uf} · escolhas organizadas para conferência`:'Escolhas organizadas para conferência',64,205);
+    roundRect(ctx,64,256,270,50,25,'rgba(255,255,255,.10)','rgba(255,255,255,.20)');ctx.fillStyle='#fff';ctx.font='700 22px system-ui, sans-serif';ctx.fillText('DADOS PÚBLICOS · TSE',88,289);
+
+    const items=CARGOS.map(cfg=>({cfg,vote:state.votes[cfg.id]||{}}));
+    const photoLoads=await Promise.all(items.map(({cfg,vote})=>vote.candidate?loadCanvasPhoto(photoUrl(vote.candidate,cfg)):Promise.resolve(null)));
+    const startY=392,rowH=137,gap=10;
+    for(let i=0;i<items.length;i++){
+      const {cfg,vote}=items[i],c=vote.candidate; const y=startY+i*(rowH+gap);
+      roundRect(ctx,54,y,W-108,rowH,24,'#ffffff','#dce5e0');
+      ctx.fillStyle='#e7f3ee';roundRect(ctx,76,y+28,54,54,16,'#e7f3ee');ctx.fillStyle='#0d624b';ctx.font='800 24px system-ui, sans-serif';ctx.textAlign='center';ctx.fillText(String(cfg.order).padStart(2,'0'),103,y+63);ctx.textAlign='left';
+      if(c){
+        const img=photoLoads[i];
+        if(img) drawCoverImage(ctx,img,150,y+18,78,100,18);
+        else{roundRect(ctx,150,y+18,78,100,18,'#edf2ef');ctx.fillStyle='#7a8c84';ctx.font='800 30px system-ui, sans-serif';ctx.textAlign='center';ctx.fillText((c.u||'?').trim().charAt(0).toUpperCase(),189,y+78);ctx.textAlign='left';}
+        ctx.fillStyle='#6d8179';ctx.font='800 19px system-ui, sans-serif';ctx.fillText(cfg.short.toUpperCase(),252,y+40);
+        ctx.fillStyle='#142e28';ctx.font='800 31px system-ui, sans-serif';const nameLines=wrapCanvasText(ctx,c.u||'Nome não informado',500).slice(0,1);ctx.fillText(nameLines[0]||'',252,y+78);
+        ctx.fillStyle='#667b73';ctx.font='600 21px system-ui, sans-serif';ctx.fillText(c.p||'',252,y+108);
+        ctx.fillStyle='#0d624b';ctx.font='900 44px ui-monospace, SFMono-Regular, Menlo, monospace';ctx.textAlign='right';ctx.fillText(String(vote.number||c.n||''),W-82,y+82);ctx.textAlign='left';
+      }else{
+        ctx.fillStyle='#71847c';ctx.font='800 19px system-ui, sans-serif';ctx.fillText(cfg.short.toUpperCase(),154,y+55);ctx.fillStyle='#a0ada7';ctx.font='500 23px system-ui, sans-serif';ctx.fillText('Não preenchido',154,y+88);
+      }
+    }
+    ctx.fillStyle='#546a62';ctx.font='500 20px system-ui, sans-serif';ctx.fillText('Confira os nomes e números na urna antes de confirmar.',64,H-70);
+    ctx.fillStyle='#0d624b';ctx.font='800 19px system-ui, sans-serif';ctx.textAlign='right';ctx.fillText('Projeto independente',W-64,H-70);ctx.textAlign='left';
+    return canvas;
+  }
+
+  function canvasBlob(canvas){return new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Falha ao gerar imagem')),'image/png',1));}
+
+  async function openShareModal(){
+    if(!selectedVotes().length){showToast('Escolha pelo menos um candidato antes de compartilhar.');return;}
+    el.shareModal.hidden=false;document.body.style.overflow='hidden';el.shareLoading.hidden=false;
+    try{await generateShareCard();}finally{el.shareLoading.hidden=true;}
+  }
+  function closeShareModal(){el.shareModal.hidden=true;document.body.style.overflow='';}
+
+  async function downloadShareCard(){
+    try{await generateShareCard();const blob=await canvasBlob(el.shareCanvas);const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`minha-colinha-eleitoral-2026-${state.uf||'BR'}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);showToast('Card PNG gerado.');}catch{showToast('Não foi possível gerar o card.');}
+  }
+
+  async function nativeShare(){
+    try{
+      await generateShareCard();const blob=await canvasBlob(el.shareCanvas);const file=new File([blob],`minha-colinha-eleitoral-2026-${state.uf||'BR'}.png`,{type:'image/png'});
+      const data={title:'Minha Colinha Eleitoral 2026',text:shareText()};
+      if(navigator.canShare?.({files:[file]})){data.files=[file];await navigator.share(data);return;}
+      if(navigator.share){data.url=location.href.split('#')[0];await navigator.share(data);return;}
+      await downloadShareCard();
+    }catch(err){if(err?.name!=='AbortError')showToast('Compartilhamento não disponível neste navegador.');}
+  }
+
+  async function copyShareText(){
+    const text=shareText();
+    try{await navigator.clipboard.writeText(text);showToast('Resumo copiado.');}
+    catch{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();showToast('Resumo copiado.');}
+  }
+
+  function shareNetwork(network){
+    const text=shareText(),url=location.href.split('#')[0];let target='';
+    if(network==='whatsapp')target=`https://wa.me/?text=${encodeURIComponent(text)}`;
+    if(network==='telegram')target=`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+    if(network==='x')target=`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    if(network==='facebook')target=`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+    if(target) window.open(target,'_blank','noopener,noreferrer');
+  }
+
+  let toastTimer=0;
+  function showToast(message){
+    clearTimeout(toastTimer);el.toast.textContent=message;el.toast.hidden=false;toastTimer=setTimeout(()=>{el.toast.hidden=true;},2600);
+  }
+
   function exportBackup(){
     const blob=new Blob([JSON.stringify({version:2,year:YEAR,uf:state.uf,votes:state.votes},null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`colinha-eleitoral-2026-${state.uf||'BR'}.json`;a.click();URL.revokeObjectURL(a.href);
@@ -363,8 +488,15 @@
   populateUf(); renderCards(); updatePreview();
   el.uf.addEventListener('change',()=>changeUf(el.uf.value));
   el.printBtn.addEventListener('click',()=>{if(allReady()){updatePreview();window.print();}});
+  el.shareBtn.addEventListener('click',openShareModal);
   el.clearBtn.addEventListener('click',()=>{if(confirm('Apagar todas as escolhas desta sessão?')){state={uf:state.uf,votes:{}};saveState();renderCards();updatePreview();}});
   el.backupBtn.addEventListener('click',exportBackup);
+  el.nativeShareBtn.addEventListener('click',nativeShare);
+  el.downloadCardBtn.addEventListener('click',downloadShareCard);
+  el.copyShareBtn.addEventListener('click',copyShareText);
+  el.shareModal.querySelectorAll('[data-close-share]').forEach(node=>node.addEventListener('click',closeShareModal));
+  el.shareModal.querySelectorAll('[data-network]').forEach(btn=>btn.addEventListener('click',()=>shareNetwork(btn.dataset.network)));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!el.shareModal.hidden)closeShareModal();});
   el.backupFile.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)importBackup(f);e.target.value='';});
   loadUfData(state.uf);
   if('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('./sw.js').catch(()=>{});

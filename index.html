@@ -3,88 +3,159 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0d624b">
-  <meta name="description" content="Colinha eleitoral pessoal 2026 com preenchimento automático de nome, partido e foto a partir de dados públicos do TSE.">
+  <meta name="theme-color" content="#102c26">
+  <meta name="description" content="Monte sua colinha eleitoral 2026 com busca por nome ou número, dados públicos do TSE, impressão A6 e exportação para redes sociais.">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
   <title>Minha Colinha Eleitoral 2026</title>
 </head>
 <body>
-  <main class="shell">
-    <header class="hero">
-      <div>
-        <div class="eyebrow">Eleições Gerais 2026</div>
-        <h1>Minha Colinha Eleitoral</h1>
-        <p>Digite o número ou pesquise pelo nome. O número, o nome de urna, o partido e a foto são preenchidos automaticamente a partir dos dados públicos do Tribunal Superior Eleitoral.</p>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#top" aria-label="Minha Colinha Eleitoral 2026">
+        <span class="brand-mark" aria-hidden="true">26</span>
+        <span><strong>Minha Colinha</strong><small>Eleições 2026</small></span>
+      </a>
+      <div class="header-meta">
+        <span class="neutral-chip">Projeto independente</span>
+        <span class="data-chip"><span class="mini-dot"></span>Dados públicos: TSE</span>
       </div>
-      <div class="hero-badge">Projeto independente<br><strong>Dados: TSE</strong></div>
-    </header>
+    </div>
+  </header>
 
-    <section class="warning">
-      <strong>Para o dia da votação:</strong> prepare a colinha aqui e leve a versão impressa. Celular e outros dispositivos eletrônicos não devem ser levados para a cabine de votação.
+  <main id="top" class="shell">
+    <section class="hero-pro">
+      <div class="hero-copy">
+        <span class="kicker">Organize antes de votar</span>
+        <h1>Sua escolha, <span>clara e organizada.</span></h1>
+        <p>Pesquise cada candidatura por <strong>nome ou número</strong>, confira os dados oficiais e monte uma colinha pronta para imprimir ou compartilhar.</p>
+        <div class="hero-points" aria-label="Recursos principais">
+          <span>Busca inteligente</span><span>Fotos e dados oficiais</span><span>Colinha A6</span><span>Card social</span>
+        </div>
+      </div>
+      <div class="journey-card" aria-label="Etapas para montar a colinha">
+        <div class="journey-head"><span>Como funciona</span><strong>4 passos</strong></div>
+        <ol class="journey-list">
+          <li><b>01</b><span><strong>Defina sua UF</strong><small>Carregamos a base eleitoral correspondente.</small></span></li>
+          <li><b>02</b><span><strong>Pesquise</strong><small>Use nome ou número no mesmo campo.</small></span></li>
+          <li><b>03</b><span><strong>Revise</strong><small>Confira foto, partido e número.</small></span></li>
+          <li><b>04</b><span><strong>Leve ou compartilhe</strong><small>Imprima em A6 ou gere um card social.</small></span></li>
+        </ol>
+      </div>
     </section>
 
-    <section class="setup panel">
-      <div class="setup-field">
-        <label for="uf">Seu estado / DF</label>
-        <select id="uf" aria-label="Selecione seu estado">
-          <option value="">Selecione a UF</option>
-        </select>
+    <section class="civic-note" aria-label="Aviso sobre o dia da votação">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3Zm0 5.3v5.2m0 3.1h.01"/></svg>
+      <div><strong>No dia da votação, leve a versão impressa.</strong><span>O site ajuda a preparar e conferir sua colinha. Dispositivos eletrônicos não devem ser levados à cabine.</span></div>
+    </section>
+
+    <section class="control-panel">
+      <div class="control-main">
+        <div class="control-title"><span class="step-pill">Etapa inicial</span><h2>Configure sua colinha</h2></div>
+        <div class="uf-control">
+          <label for="uf">Estado / Distrito Federal</label>
+          <div class="select-wrap">
+            <select id="uf" aria-label="Selecione seu estado"><option value="">Selecione a UF</option></select>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+          </div>
+        </div>
       </div>
-      <div class="source-state">
-        <span class="dot" id="sourceDot"></span>
-        <div>
-          <strong id="sourceTitle">Aguardando estado</strong>
-          <small id="sourceDetail">Os dados estaduais serão carregados após selecionar a UF.</small>
+      <div class="control-status">
+        <div class="source-state">
+          <span class="dot" id="sourceDot"></span>
+          <div><strong id="sourceTitle">Aguardando estado</strong><small id="sourceDetail">Selecione a UF para carregar os dados eleitorais.</small></div>
+        </div>
+        <div class="progress-block">
+          <div class="progress-copy"><span>Progresso da colinha</span><strong id="progressText">0 de 6</strong></div>
+          <div class="progress-track" aria-hidden="true"><span id="progressBar"></span></div>
         </div>
       </div>
     </section>
 
-    <div class="toolbar">
-      <button class="btn primary" id="printBtn" type="button">Imprimir colinha A6</button>
-      <button class="btn secondary" id="backupBtn" type="button">Exportar backup</button>
-      <label class="btn secondary file-button">Importar backup<input id="backupFile" type="file" accept="application/json" hidden></label>
-      <button class="btn danger" id="clearBtn" type="button">Limpar escolhas</button>
-    </div>
-
     <section class="workspace">
-      <div>
+      <div class="builder-column">
         <div class="section-heading">
-          <div>
-            <span class="step-label">Montagem</span>
-            <h2>Seus votos</h2>
-          </div>
-          <p>Use um único campo em cada cargo: digite o número ou parte do nome, na mesma ordem em que os cargos aparecem na urna.</p>
+          <div><span class="section-overline">Montagem</span><h2>Seus candidatos</h2></div>
+          <p>Preencha na mesma ordem em que os cargos aparecem na urna.</p>
         </div>
         <div id="cards" class="cards"></div>
       </div>
 
-      <aside class="preview-wrap">
-        <div class="preview-sticky">
-          <div class="section-heading compact">
-            <div>
-              <span class="step-label">Prévia</span>
-              <h2>Colinha A6</h2>
+      <aside class="side-column">
+        <div class="side-sticky">
+          <div class="preview-card">
+            <div class="preview-head">
+              <div><span class="section-overline">Revisão</span><h2>Prévia da colinha</h2></div>
+              <span class="format-chip">A6</span>
+            </div>
+            <div id="screenPreview" class="paper-preview" aria-label="Prévia da colinha impressa"></div>
+            <p class="preview-note">Modelo independente. Confira as informações na urna antes de confirmar cada voto.</p>
+          </div>
+
+          <div class="action-card">
+            <span class="section-overline">Finalizar</span>
+            <h3>O que deseja fazer?</h3>
+            <button class="action primary-action" id="printBtn" type="button">
+              <span class="action-icon"><svg viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-4a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/></svg></span>
+              <span><strong>Imprimir colinha</strong><small>Formato A6 pronto para papel</small></span>
+            </button>
+            <button class="action social-action" id="shareBtn" type="button" disabled>
+              <span class="action-icon"><svg viewBox="0 0 24 24"><path d="M18 8a3 3 0 1 0-2.8-4 3 3 0 0 0 .4 1.5L8.7 9.4A3 3 0 0 0 6 8a3 3 0 1 0 2.7 4.6l6.9 3.9A3 3 0 1 0 17 14a3 3 0 0 0-1.4.4l-6.9-3.9v-1l6.9-3.9A3 3 0 0 0 18 8Z"/></svg></span>
+              <span><strong>Compartilhar</strong><small>Card para redes sociais</small></span>
+            </button>
+            <div class="secondary-actions">
+              <button class="mini-action" id="backupBtn" type="button">Exportar backup</button>
+              <label class="mini-action file-button">Importar backup<input id="backupFile" type="file" accept="application/json" hidden></label>
+              <button class="mini-action danger" id="clearBtn" type="button">Limpar</button>
             </div>
           </div>
-          <div id="screenPreview" class="paper-preview" aria-label="Prévia da colinha impressa"></div>
-          <p class="preview-note">Modelo independente, em tamanho A6, baseado na ordem oficial de votação. Confira sempre as informações antes de imprimir.</p>
         </div>
       </aside>
     </section>
 
-    <section class="privacy panel">
-      <strong>Privacidade</strong>
-      <p>Suas escolhas existem apenas enquanto esta página estiver aberta e são descartadas ao atualizar ou recarregar. O site não envia sua colinha para um servidor. Os arquivos públicos de candidaturas são sincronizados do TSE e a foto é exibida diretamente do serviço oficial de imagens.</p>
+    <section class="trust-grid">
+      <article><span class="trust-icon">01</span><div><strong>Dados oficiais</strong><p>Candidaturas sincronizadas a partir dos dados públicos do Tribunal Superior Eleitoral.</p></div></article>
+      <article><span class="trust-icon">02</span><div><strong>Privacidade por padrão</strong><p>Suas escolhas ficam apenas nesta página e são descartadas quando ela é recarregada.</p></div></article>
+      <article><span class="trust-icon">03</span><div><strong>Compartilhamento sob seu controle</strong><p>Nada é publicado automaticamente. O card social só é gerado quando você solicitar.</p></div></article>
     </section>
 
-    <footer>
-      <p>Fonte dos dados: Tribunal Superior Eleitoral — Portal de Dados Abertos / DivulgaCandContas. Este site não é oficial, não recomenda candidaturas e não possui vínculo institucional com a Justiça Eleitoral.</p>
+    <footer class="site-footer">
+      <div><strong>Minha Colinha Eleitoral 2026</strong><p>Ferramenta independente para organização pessoal. Não recomenda candidaturas e não possui vínculo institucional com a Justiça Eleitoral.</p></div>
+      <p>Fonte dos dados: Tribunal Superior Eleitoral — Portal de Dados Abertos / DivulgaCandContas.</p>
     </footer>
   </main>
 
   <section class="print-sheet" id="printSheet" aria-hidden="true"></section>
+
+  <div class="modal-shell" id="shareModal" hidden>
+    <div class="modal-backdrop" data-close-share></div>
+    <section class="share-modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+      <button class="modal-close" type="button" data-close-share aria-label="Fechar">×</button>
+      <div class="share-modal-head">
+        <span class="section-overline">Exportação social</span>
+        <h2 id="shareTitle">Compartilhe sua colinha</h2>
+        <p>Geramos um card vertical 4:5. Fotos são incluídas quando o serviço de origem permite; caso contrário, o card usa uma identificação visual neutra.</p>
+      </div>
+      <div class="share-layout">
+        <div class="social-preview-wrap"><canvas id="shareCanvas" width="1080" height="1350" aria-label="Prévia do card para redes sociais"></canvas><div class="share-loading" id="shareLoading" hidden>Gerando card…</div></div>
+        <div class="share-options">
+          <button class="share-option featured" id="nativeShareBtn" type="button"><strong>Compartilhar pelo dispositivo</strong><span>Abre WhatsApp, Instagram e outros apps disponíveis no celular.</span></button>
+          <button class="share-option" id="downloadCardBtn" type="button"><strong>Baixar card PNG</strong><span>Ideal para Stories, feed ou envio manual.</span></button>
+          <button class="share-option" id="copyShareBtn" type="button"><strong>Copiar resumo em texto</strong><span>Copia cargos, nomes e números.</span></button>
+          <div class="social-links" aria-label="Compartilhar por rede social">
+            <button type="button" data-network="whatsapp">WhatsApp</button>
+            <button type="button" data-network="telegram">Telegram</button>
+            <button type="button" data-network="x">X</button>
+            <button type="button" data-network="facebook">Facebook</button>
+          </div>
+          <p class="share-privacy">O compartilhamento é iniciado somente após o seu clique. Nenhuma escolha é enviada pelo site em segundo plano.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="./data/status.js"></script>
   <script src="./app.js"></script>
