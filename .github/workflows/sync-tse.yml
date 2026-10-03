@@ -1,4 +1,4 @@
-name: Sincronizar dados do TSE
+name: Sincronizar dados do TSE e publicar site
 
 on:
   workflow_dispatch:
@@ -6,36 +6,43 @@ on:
     - cron: '17 */6 * * *'
   push:
     branches: [main]
-    paths:
-      - 'scripts/**'
-      - '.github/workflows/sync-tse.yml'
-      - 'index.html'
-      - 'app.js'
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  sync:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Baixar repositório
         uses: actions/checkout@v4
+
       - name: Configurar Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
       - name: Sincronizar candidatos do TSE
         run: node scripts/sync-tse.mjs
-      - name: Salvar atualização no repositório
-        run: |
-          if git diff --quiet -- data; then
-            echo "Sem alterações nos dados."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
-          git commit -m "dados: atualizar candidaturas do TSE"
-          git push
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Preparar artefato do site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

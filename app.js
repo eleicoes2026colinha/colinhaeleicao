@@ -4,7 +4,6 @@
   const YEAR = 2026;
   const ELECTION_ID = '20322002026';
   const PHOTO_BASE = `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ELECTION_ID}`;
-  const STORAGE_KEY = 'minha-colinha-eleitoral-2026-tse-v2';
 
   const UFS = [
     ['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']
@@ -25,16 +24,21 @@
     printBtn: document.querySelector('#printBtn'), clearBtn: document.querySelector('#clearBtn'), backupBtn: document.querySelector('#backupBtn'), backupFile: document.querySelector('#backupFile')
   };
 
-  let state = loadState();
+  // As escolhas existem apenas durante a sessão atual da página.
+  // Recarregar/atualizar a página sempre inicia uma colinha vazia.
+  clearLegacyStoredChoices();
+  let state = {uf:'', votes:{}};
   let loadToken = 0;
 
-  function loadState(){
+  function clearLegacyStoredChoices(){
     try {
-      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      return raw && typeof raw === 'object' ? {uf:raw.uf || '', votes:raw.votes || {}} : {uf:'', votes:{}};
-    } catch { return {uf:'', votes:{}}; }
+      for(let i=localStorage.length-1;i>=0;i--){
+        const key=localStorage.key(i);
+        if(key && key.startsWith('minha-colinha-eleitoral-2026')) localStorage.removeItem(key);
+      }
+    } catch {}
   }
-  function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function saveState(){ /* intencionalmente não persiste escolhas entre recargas */ }
   function cargoCode(cfg, uf){ return cfg.id === 'depEstadual' && uf === 'DF' ? 8 : cfg.cargo; }
   function dataKey(cfg, uf){ return cfg.scope === 'br' ? 'BR:1' : `${uf}:${cargoCode(cfg,uf)}`; }
   function photoUrl(candidate, cfg){
@@ -319,7 +323,7 @@
   populateUf(); renderCards(); updatePreview();
   el.uf.addEventListener('change',()=>changeUf(el.uf.value));
   el.printBtn.addEventListener('click',()=>{if(allReady()){updatePreview();window.print();}});
-  el.clearBtn.addEventListener('click',()=>{if(confirm('Apagar todas as escolhas salvas neste navegador?')){state={uf:state.uf,votes:{}};saveState();renderCards();updatePreview();}});
+  el.clearBtn.addEventListener('click',()=>{if(confirm('Apagar todas as escolhas desta sessão?')){state={uf:state.uf,votes:{}};saveState();renderCards();updatePreview();}});
   el.backupBtn.addEventListener('click',exportBackup);
   el.backupFile.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)importBackup(f);e.target.value='';});
   loadUfData(state.uf);
