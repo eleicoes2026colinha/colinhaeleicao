@@ -1,0 +1,12 @@
+{
+  "name":"Minha Colinha Eleitoral 2026",
+  "short_name":"Colinha 2026",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#f3f6f4",
+  "theme_color":"#0d624b",
+  "lang":"pt-BR",
+  "description":"Colinha eleitoral pessoal com identificação automática de candidaturas a partir de dados públicos do TSE.",
+  "icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
