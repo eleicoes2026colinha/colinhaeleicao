@@ -75,21 +75,20 @@
       const vote = state.votes[cfg.id] || {};
       const candidate = vote.candidate || null;
       const img = candidate ? photoUrl(candidate,cfg) : '';
+      const searchValue = candidate
+        ? `${candidate.n || vote.number || ''} — ${candidate.u || ''}`
+        : (vote.number || '');
       return `<article class="vote-card" data-id="${cfg.id}">
         <div class="order">${cfg.order}</div>
         <div class="photo-frame" data-photo>
           ${img ? `<img src="${img}" alt="Foto de ${escapeAttr(candidate.u || '')}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=&quot;photo-empty&quot;>Foto indisponível</span>'">` : '<span class="photo-empty">Foto do<br>candidato</span>'}
         </div>
         <div class="vote-main">
-          <div class="vote-topline"><div class="vote-title">${cfg.label}</div><div class="digit-help">${cfg.digits} dígitos</div></div>
-          <div class="lookup-fields">
-            <div class="field-group number-field">
-              <label>Número</label>
-              <input class="number-input" data-number inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="${cfg.digits}" value="${escapeAttr(vote.number || '')}" placeholder="${'•'.repeat(cfg.digits)}" aria-label="Número para ${cfg.label}">
-            </div>
-            <div class="field-group name-field">
-              <label>Ou pesquise pelo nome</label>
-              <input class="name-input" data-name-search type="search" autocomplete="off" placeholder="Ex.: Maria, João Silva…" aria-label="Pesquisar ${cfg.label} pelo nome">
+          <div class="vote-topline"><div class="vote-title">${cfg.label}</div><div class="digit-help">Número: ${cfg.digits} dígitos</div></div>
+          <div class="lookup-fields unified-lookup">
+            <div class="field-group search-field">
+              <label>Pesquisar por número ou nome</label>
+              <input class="search-input" data-search type="search" autocomplete="off" value="${escapeAttr(searchValue)}" placeholder="Digite ${'0'.repeat(cfg.digits)} ou o nome do candidato" aria-label="Pesquisar ${cfg.label} por número ou nome">
             </div>
           </div>
           <div class="candidate-info" data-info>${candidateInfoHtml(candidate)}</div>
@@ -100,42 +99,89 @@
 
     el.cards.querySelectorAll('.vote-card').forEach(card => {
       const cfg = CARGOS.find(x=>x.id===card.dataset.id);
-      const input = card.querySelector('[data-number]');
-      input.addEventListener('input', () => onNumberInput(cfg, card, input));
-      const nameInput=card.querySelector('[data-name-search]');
-      let nameTimer=0;
-      nameInput.addEventListener('input',()=>{
-        clearTimeout(nameTimer);
-        nameTimer=setTimeout(()=>onNameInput(cfg,card,nameInput),180);
+      const input = card.querySelector('[data-search]');
+      let searchTimer=0;
+      input.addEventListener('input',()=>{
+        clearTimeout(searchTimer);
+        const raw=input.value.trim();
+        const looksNumeric = raw !== '' && /^[\d\s.\-]+$/.test(raw);
+        if(looksNumeric){
+          onUnifiedSearch(cfg,card,input);
+        } else {
+          searchTimer=setTimeout(()=>onUnifiedSearch(cfg,card,input),180);
+        }
       });
-      nameInput.addEventListener('search',()=>onNameInput(cfg,card,nameInput));
+      input.addEventListener('search',()=>{
+        clearTimeout(searchTimer);
+        onUnifiedSearch(cfg,card,input);
+      });
     });
     validateSenate();
   }
 
   function candidateInfoHtml(c){
-    if(!c) return '<div class="lookup-message">Digite o número completo ou pesquise pelo nome para identificar a candidatura.</div>';
+    if(!c) return '<div class="lookup-message">Digite o número completo ou parte do nome para identificar a candidatura.</div>';
     const status = meaningfulStatus(c.s);
     return `<div class="candidate-name">${escapeHtml(c.u || 'Nome não informado')}</div>
       <div class="candidate-meta"><span>${escapeHtml(c.p || 'Partido não informado')}</span>${status ? `<span class="candidate-status ${statusWarn(status)?'warn':''}">${escapeHtml(status)}</span>`:''}</div>`;
   }
 
-  async function onNumberInput(cfg, card, input){
-    const number = input.value.replace(/\D/g,'').slice(0,cfg.digits);
-    input.value = number;
-    const nameInput=card.querySelector('[data-name-search]'); if(nameInput) nameInput.value='';
-    state.votes[cfg.id] = {number, candidate:null};
+  function clearCurrentSelection(cfg,card,number=''){
+    state.votes[cfg.id]={number,candidate:null};
     saveState();
     updateCardPhoto(card,null,cfg);
-    card.querySelector('[data-info]').innerHTML = number.length ? `<div class="lookup-message">${number.length < cfg.digits ? `Faltam ${cfg.digits-number.length} dígito(s).` : 'Consultando os dados sincronizados do TSE…'}</div>` : '<div class="lookup-message">Digite o número completo ou pesquise pelo nome para identificar a candidatura.</div>';
-    card.querySelector('[data-matches]').innerHTML='';
     updatePreview();
     validateSenate();
-    if(number.length !== cfg.digits) return;
-    await resolveCandidate(cfg, card, number);
   }
 
-  async function resolveCandidate(cfg, card, number){
+  async function onUnifiedSearch(cfg,card,input){
+    const raw=input.value.trim();
+    const box=card.querySelector('[data-matches]');
+    const info=card.querySelector('[data-info]');
+    box.innerHTML='';
+
+    // Se o usuário alterar um candidato já escolhido, a seleção anterior deixa de valer.
+    const selected=state.votes[cfg.id]?.candidate;
+    const selectedText=selected ? `${selected.n || ''} — ${selected.u || ''}` : '';
+    if(selected && raw===selectedText) return;
+
+    if(!raw){
+      clearCurrentSelection(cfg,card,'');
+      info.innerHTML='<div class="lookup-message">Digite o número completo ou parte do nome para identificar a candidatura.</div>';
+      return;
+    }
+
+    if(!state.uf && cfg.scope==='uf'){
+      clearCurrentSelection(cfg,card,'');
+      info.innerHTML='<div class="lookup-message error">Selecione sua UF antes de pesquisar.</div>';
+      return;
+    }
+
+    const numericLike=/^[\d\s.\-]+$/.test(raw);
+    if(numericLike){
+      const number=raw.replace(/\D/g,'').slice(0,cfg.digits);
+      if(input.value!==number) input.value=number;
+      clearCurrentSelection(cfg,card,number);
+      if(number.length<cfg.digits){
+        info.innerHTML=`<div class="lookup-message">Faltam ${cfg.digits-number.length} dígito(s) para completar o número.</div>`;
+        return;
+      }
+      info.innerHTML='<div class="lookup-message">Consultando os dados sincronizados do TSE…</div>';
+      await resolveCandidate(cfg,card,number,input);
+      return;
+    }
+
+    clearCurrentSelection(cfg,card,'');
+    const query=normalizeSearch(raw);
+    if(query.length<2){
+      info.innerHTML='<div class="lookup-message">Digite pelo menos 2 letras para pesquisar pelo nome.</div>';
+      return;
+    }
+    info.innerHTML='<div class="lookup-message">Pesquisando candidaturas…</div>';
+    await resolveByName(cfg,card,input,query);
+  }
+
+  async function resolveCandidate(cfg, card, number, searchInput=null){
     if(!state.uf && cfg.scope === 'uf'){
       card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">Selecione sua UF primeiro.</div>'; return;
     }
@@ -144,6 +190,7 @@
     catch {
       card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">A base deste cargo ainda não está disponível. Execute a sincronização do TSE no projeto.</div>'; return;
     }
+    if(searchInput && searchInput.value.replace(/\D/g,'').slice(0,cfg.digits)!==number) return;
     const pack = window.__TSE_DATA__?.[key];
     const matches = uniqueCandidates((pack?.c || []).filter(c => String(c.n) === number));
     if(!matches.length){
@@ -151,31 +198,20 @@
       card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">Número não encontrado na base sincronizada. Confira o número ou atualize os dados do TSE.</div>';
       updatePreview(); return;
     }
-    if(matches.length === 1){ selectCandidate(cfg,card,number,matches[0]); return; }
-    // Substituições ou registros distintos podem reutilizar o mesmo número ao longo do processo.
-    card.querySelector('[data-info]').innerHTML='<div class="lookup-message">Há mais de um registro com esse número. Selecione o nome que deseja conferir.</div>';
+    if(matches.length === 1){ selectCandidate(cfg,card,number,matches[0],searchInput); return; }
+    card.querySelector('[data-info]').innerHTML='<div class="lookup-message">Há mais de um registro com esse número. Selecione a candidatura correta.</div>';
     const box=card.querySelector('[data-matches]');
-    box.innerHTML=`<div class="multi-match">${matches.map((c,i)=>`<button type="button" data-match="${i}"><strong>${escapeHtml(c.u||'Sem nome')}</strong> · ${escapeHtml(c.p||'')}</button>`).join('')}</div>`;
-    box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>selectCandidate(cfg,card,number,matches[Number(btn.dataset.match)])));
+    box.innerHTML=`<div class="multi-match name-results">${matches.map((c,i)=>candidateMatchButton(c,i)).join('')}</div>`;
+    box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>selectCandidate(cfg,card,number,matches[Number(btn.dataset.match)],searchInput)));
   }
 
-  async function onNameInput(cfg,card,input){
-    const raw=input.value;
-    const query=normalizeSearch(raw);
+  async function resolveByName(cfg,card,input,query){
     const box=card.querySelector('[data-matches]');
-    if(!query){ box.innerHTML=''; return; }
-    if(!state.uf && cfg.scope==='uf'){
-      box.innerHTML='<div class="lookup-message error">Selecione sua UF antes de pesquisar pelo nome.</div>'; return;
-    }
-    if(query.length<2){
-      box.innerHTML='<div class="lookup-message">Digite pelo menos 2 letras para pesquisar.</div>'; return;
-    }
     const key=dataKey(cfg,state.uf);
     try{ await ensureData(key); }
     catch{
-      box.innerHTML='<div class="lookup-message error">A base deste cargo ainda não está disponível. Execute a sincronização do TSE no projeto.</div>'; return;
+      card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">A base deste cargo ainda não está disponível. Execute a sincronização do TSE no projeto.</div>'; return;
     }
-    // Evita exibir resultados de uma consulta antiga se o usuário continuar digitando enquanto o arquivo carrega.
     if(normalizeSearch(input.value)!==query) return;
     const pack=window.__TSE_DATA__?.[key];
     const candidates=uniqueCandidates(pack?.c||[]);
@@ -194,22 +230,26 @@
     scored.sort((a,b)=>b.score-a.score || String(a.c.u||'').localeCompare(String(b.c.u||''),'pt-BR') || String(a.c.n||'').localeCompare(String(b.c.n||''),'pt-BR',{numeric:true}));
     const matches=scored.slice(0,12).map(x=>x.c);
     if(!matches.length){
-      box.innerHTML='<div class="lookup-message error">Nenhuma candidatura encontrada com esse nome neste cargo.</div>'; return;
+      card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">Nenhuma candidatura encontrada com esse nome neste cargo.</div>';
+      box.innerHTML=''; return;
     }
-    box.innerHTML=`<div class="search-summary">${matches.length}${scored.length>matches.length?` de ${scored.length}`:''} resultado(s)</div><div class="multi-match name-results">${matches.map((c,i)=>{
-      const full=c.f && normalizeSearch(c.f)!==normalizeSearch(c.u) ? `<small>${escapeHtml(c.f)}</small>`:'';
-      return `<button type="button" data-match="${i}"><span><strong>${escapeHtml(c.u||'Sem nome')}</strong>${full}</span><span class="match-meta">${escapeHtml(c.n||'')} · ${escapeHtml(c.p||'')}</span></button>`;
-    }).join('')}</div>`;
+    card.querySelector('[data-info]').innerHTML='<div class="lookup-message">Selecione uma candidatura nos resultados abaixo.</div>';
+    box.innerHTML=`<div class="search-summary">${matches.length}${scored.length>matches.length?` de ${scored.length}`:''} resultado(s)</div><div class="multi-match name-results">${matches.map((c,i)=>candidateMatchButton(c,i)).join('')}</div>`;
     box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
       const candidate=matches[Number(btn.dataset.match)];
-      selectCandidate(cfg,card,String(candidate.n||''),candidate);
-      const numberInput=card.querySelector('[data-number]'); if(numberInput) numberInput.value=String(candidate.n||'');
-      input.value='';
+      selectCandidate(cfg,card,String(candidate.n||''),candidate,input);
     }));
   }
 
-  function selectCandidate(cfg,card,number,candidate){
+  function candidateMatchButton(c,i){
+    const full=c.f && normalizeSearch(c.f)!==normalizeSearch(c.u) ? `<small>${escapeHtml(c.f)}</small>`:'';
+    return `<button type="button" data-match="${i}"><span><strong>${escapeHtml(c.u||'Sem nome')}</strong>${full}</span><span class="match-meta">${escapeHtml(c.n||'')} · ${escapeHtml(c.p||'')}</span></button>`;
+  }
+
+  function selectCandidate(cfg,card,number,candidate,searchInput=null){
     state.votes[cfg.id]={number,candidate}; saveState();
+    const input=searchInput || card.querySelector('[data-search]');
+    if(input) input.value=`${candidate.n || number || ''} — ${candidate.u || ''}`;
     card.querySelector('[data-info]').innerHTML=candidateInfoHtml(candidate);
     card.querySelector('[data-matches]').innerHTML='';
     updateCardPhoto(card,candidate,cfg); updatePreview(); validateSenate();
@@ -299,7 +339,7 @@
   function allReady(){
     if(!state.uf){alert('Selecione sua UF antes de imprimir.');return false;}
     const missing=CARGOS.filter(c=>!state.votes[c.id]?.candidate);
-    if(missing.length){alert(`Ainda faltam ${missing.length} voto(s) com candidatura identificada. Complete os números antes de imprimir.`);return false;}
+    if(missing.length){alert(`Ainda faltam ${missing.length} voto(s) com candidatura identificada. Identifique todas as candidaturas antes de imprimir.`);return false;}
     const a=state.votes.senador1?.candidate,b=state.votes.senador2?.candidate;
     if(a&&b&&String(a.sq)===String(b.sq)){alert('Os dois votos para o Senado precisam ser em candidaturas diferentes.');return false;}
     return true;

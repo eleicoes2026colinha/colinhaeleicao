@@ -1,15 +1,16 @@
 # Minha Colinha Eleitoral 2026 — dados automáticos do TSE
 
-Site estático, responsivo e neutro para montar uma colinha eleitoral pessoal. O eleitor pode digitar o **número** ou **pesquisar pelo nome** e o site preenche **número, nome de urna, partido e foto** usando dados públicos do Tribunal Superior Eleitoral (TSE).
+Site estático, responsivo e neutro para montar uma colinha eleitoral pessoal. O eleitor usa **um único campo de pesquisa por cargo**: pode digitar o **número** ou **parte do nome** e o site preenche **número, nome de urna, partido e foto** usando dados públicos do Tribunal Superior Eleitoral (TSE).
 
 ## O que esta versão faz
 
 - Seleção da UF.
 - Ordem da votação de 2026: deputado federal, deputado estadual/distrital, senador 1, senador 2, governador e presidente.
 - Quantidade correta de dígitos por cargo.
-- Nome e partido preenchidos automaticamente após o número completo.
-- Pesquisa por nome de urna ou nome completo, ignorando diferenças de acentuação e maiúsculas/minúsculas.
-- Selecionar um resultado da pesquisa pelo nome preenche automaticamente o número da candidatura.
+- Um único campo aceita número ou nome.
+- Nome e partido são preenchidos automaticamente após o número completo.
+- A pesquisa por nome de urna ou nome completo ignora diferenças de acentuação e maiúsculas/minúsculas.
+- Selecionar um resultado pelo nome transforma o mesmo campo na identificação do candidato, com número e nome de urna.
 - Deduplicação por `SQ_CANDIDATO` tanto na sincronização quanto na interface, evitando o mesmo candidato repetido na lista.
 - Foto oficial carregada pelo identificador `SQ_CANDIDATO` no serviço de imagens do DivulgaCandContas.
 - Aviso para não repetir a mesma candidatura nas duas vagas do Senado.
