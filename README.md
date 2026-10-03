@@ -88,3 +88,8 @@ As escolhas permanecem apenas na memória da página. **Atualizar ou recarregar 
 ## Observação institucional
 
 Este é um projeto independente. Não recomenda candidaturas e não possui vínculo institucional com a Justiça Eleitoral. Os dados e fotografias são atribuídos às fontes públicas do Tribunal Superior Eleitoral.
+
+
+## Exportação com fotos nas redes sociais
+
+A geração do card social tenta obter a foto oficial diretamente do TSE. Quando o navegador bloquear a leitura da imagem para o canvas por política de CORS, o aplicativo usa automaticamente um proxy público de imagem apenas para montar o card de compartilhamento. A interface principal continua usando a foto oficial do TSE normalmente.

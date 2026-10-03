@@ -4,6 +4,7 @@
   const YEAR = 2026;
   const ELECTION_ID = '20322002026';
   const PHOTO_BASE = `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ELECTION_ID}`;
+  const PHOTO_PROXY_BASE = 'https://wsrv.nl/?url=';
 
   const UFS = [
     ['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']
@@ -49,6 +50,11 @@
     const photoUf = cfg.scope === 'br' ? 'BR' : state.uf;
     return `${PHOTO_BASE}/${encodeURIComponent(candidate.sq)}/${photoUf}`;
   }
+  function photoProxyUrl(url){
+    if(!url) return '';
+    const clean = String(url).replace(/^https?:\/\//,'');
+    return `${PHOTO_PROXY_BASE}${encodeURIComponent(clean)}&w=360&h=480&fit=cover&default=404&output=jpg`;
+  }
   function hasVote(v){ return !!(v && (v.number || v.candidate)); }
   function meaningfulStatus(s=''){ const t=String(s).trim(); return t && !t.startsWith('#') ? t : ''; }
   function statusWarn(s=''){ return /(INDEFER|RENÚN|FALEC|CANCEL|INAPTO|NÃO CONCORR|NAO CONCORR)/i.test(s); }
@@ -84,7 +90,7 @@
       return `<article class="vote-card${candidate ? ' is-selected' : ''}" data-id="${cfg.id}">
         <div class="order">${cfg.order}</div>
         <div class="photo-frame" data-photo>
-          ${img ? `<img src="${img}" alt="Foto de ${escapeAttr(candidate.u || '')}" loading="lazy" onerror="this.parentElement.innerHTML='<span class=&quot;photo-empty&quot;>Foto indisponível</span>'">` : '<span class="photo-empty">Foto do<br>candidato</span>'}
+          ${img ? `<img src="${img}" alt="Foto de ${escapeAttr(candidate.u || '')}" loading="lazy" crossorigin="anonymous" onerror="this.parentElement.innerHTML='<span class=&quot;photo-empty&quot;>Foto indisponível</span>'">` : '<span class="photo-empty">Foto do<br>candidato</span>'}
         </div>
         <div class="vote-main">
           <div class="vote-topline"><div class="vote-title">${cfg.label}</div><div class="digit-help">Número: ${cfg.digits} dígitos</div></div>
@@ -264,7 +270,7 @@
     const frame=card.querySelector('[data-photo]');
     if(!candidate){frame.innerHTML='<span class="photo-empty">Foto do<br>candidato</span>';return;}
     const url=photoUrl(candidate,cfg); const img=document.createElement('img');
-    img.src=url; img.alt=`Foto de ${candidate.u||'candidato'}`; img.loading='lazy';
+    img.src=url; img.alt=`Foto de ${candidate.u||'candidato'}`; img.loading='lazy'; img.crossOrigin='anonymous';
     img.addEventListener('error',()=>{frame.innerHTML='<span class="photo-empty">Foto indisponível</span>';});
     frame.innerHTML=''; frame.appendChild(img);
   }
@@ -381,12 +387,30 @@
     if(fill){ctx.fillStyle=fill;ctx.fill();} if(stroke){ctx.strokeStyle=stroke;ctx.stroke();}
   }
 
-  async function loadCanvasPhoto(url){
+  async function blobToImage(blob){
+    const objectUrl=URL.createObjectURL(blob);
     try{
-      const res=await fetch(url,{mode:'cors',cache:'force-cache'}); if(!res.ok) throw new Error();
-      const blob=await res.blob(); const objectUrl=URL.createObjectURL(blob);
-      try{const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=objectUrl;});return img;}finally{URL.revokeObjectURL(objectUrl);}
-    }catch{return null;}
+      return await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=objectUrl;});
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  async function tryFetchCanvasPhoto(url){
+    const res=await fetch(url,{mode:'cors',cache:'force-cache'});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob=await res.blob();
+    if(!blob || !blob.size) throw new Error('Imagem vazia');
+    return blobToImage(blob);
+  }
+
+  async function loadCanvasPhoto(url){
+    const attempts=[url, photoProxyUrl(url)];
+    for(const candidateUrl of attempts){
+      if(!candidateUrl) continue;
+      try { return await tryFetchCanvasPhoto(candidateUrl); } catch {}
+    }
+    return null;
   }
 
   function drawCoverImage(ctx,img,x,y,w,h,r=20){
