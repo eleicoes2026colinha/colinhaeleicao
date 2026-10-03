@@ -46,6 +46,20 @@
   function meaningfulStatus(s=''){ const t=String(s).trim(); return t && !t.startsWith('#') ? t : ''; }
   function statusWarn(s=''){ return /(INDEFER|RENÚN|FALEC|CANCEL|INAPTO|NÃO CONCORR|NAO CONCORR)/i.test(s); }
   function safeText(v=''){ return String(v); }
+  function normalizeSearch(v=''){
+    return String(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR').replace(/\s+/g,' ').trim();
+  }
+  function candidateIdentity(c){
+    return String(c?.sq || `${c?.n||''}|${normalizeSearch(c?.u||'')}|${normalizeSearch(c?.p||'')}`);
+  }
+  function uniqueCandidates(list=[]){
+    const seen=new Set(); const out=[];
+    for(const c of list){
+      const key=candidateIdentity(c); if(seen.has(key)) continue;
+      seen.add(key); out.push(c);
+    }
+    return out;
+  }
 
   function populateUf(){
     for(const [code,name] of UFS){ const o=document.createElement('option'); o.value=code; o.textContent=`${code} — ${name}`; el.uf.appendChild(o); }
@@ -64,9 +78,18 @@
         </div>
         <div class="vote-main">
           <div class="vote-topline"><div class="vote-title">${cfg.label}</div><div class="digit-help">${cfg.digits} dígitos</div></div>
-          <div class="number-field"><input class="number-input" data-number inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="${cfg.digits}" value="${escapeAttr(vote.number || '')}" placeholder="${'•'.repeat(cfg.digits)}" aria-label="Número para ${cfg.label}"></div>
+          <div class="lookup-fields">
+            <div class="field-group number-field">
+              <label>Número</label>
+              <input class="number-input" data-number inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="${cfg.digits}" value="${escapeAttr(vote.number || '')}" placeholder="${'•'.repeat(cfg.digits)}" aria-label="Número para ${cfg.label}">
+            </div>
+            <div class="field-group name-field">
+              <label>Ou pesquise pelo nome</label>
+              <input class="name-input" data-name-search type="search" autocomplete="off" placeholder="Ex.: Maria, João Silva…" aria-label="Pesquisar ${cfg.label} pelo nome">
+            </div>
+          </div>
           <div class="candidate-info" data-info>${candidateInfoHtml(candidate)}</div>
-          <div data-matches></div>
+          <div data-matches aria-live="polite"></div>
         </div>
       </article>`;
     }).join('');
@@ -75,12 +98,19 @@
       const cfg = CARGOS.find(x=>x.id===card.dataset.id);
       const input = card.querySelector('[data-number]');
       input.addEventListener('input', () => onNumberInput(cfg, card, input));
+      const nameInput=card.querySelector('[data-name-search]');
+      let nameTimer=0;
+      nameInput.addEventListener('input',()=>{
+        clearTimeout(nameTimer);
+        nameTimer=setTimeout(()=>onNameInput(cfg,card,nameInput),180);
+      });
+      nameInput.addEventListener('search',()=>onNameInput(cfg,card,nameInput));
     });
     validateSenate();
   }
 
   function candidateInfoHtml(c){
-    if(!c) return '<div class="lookup-message">Digite o número completo para identificar a candidatura.</div>';
+    if(!c) return '<div class="lookup-message">Digite o número completo ou pesquise pelo nome para identificar a candidatura.</div>';
     const status = meaningfulStatus(c.s);
     return `<div class="candidate-name">${escapeHtml(c.u || 'Nome não informado')}</div>
       <div class="candidate-meta"><span>${escapeHtml(c.p || 'Partido não informado')}</span>${status ? `<span class="candidate-status ${statusWarn(status)?'warn':''}">${escapeHtml(status)}</span>`:''}</div>`;
@@ -89,10 +119,11 @@
   async function onNumberInput(cfg, card, input){
     const number = input.value.replace(/\D/g,'').slice(0,cfg.digits);
     input.value = number;
+    const nameInput=card.querySelector('[data-name-search]'); if(nameInput) nameInput.value='';
     state.votes[cfg.id] = {number, candidate:null};
     saveState();
     updateCardPhoto(card,null,cfg);
-    card.querySelector('[data-info]').innerHTML = number.length ? `<div class="lookup-message">${number.length < cfg.digits ? `Faltam ${cfg.digits-number.length} dígito(s).` : 'Consultando os dados sincronizados do TSE…'}</div>` : '<div class="lookup-message">Digite o número completo para identificar a candidatura.</div>';
+    card.querySelector('[data-info]').innerHTML = number.length ? `<div class="lookup-message">${number.length < cfg.digits ? `Faltam ${cfg.digits-number.length} dígito(s).` : 'Consultando os dados sincronizados do TSE…'}</div>` : '<div class="lookup-message">Digite o número completo ou pesquise pelo nome para identificar a candidatura.</div>';
     card.querySelector('[data-matches]').innerHTML='';
     updatePreview();
     validateSenate();
@@ -110,7 +141,7 @@
       card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">A base deste cargo ainda não está disponível. Execute a sincronização do TSE no projeto.</div>'; return;
     }
     const pack = window.__TSE_DATA__?.[key];
-    const matches = (pack?.c || []).filter(c => String(c.n) === number);
+    const matches = uniqueCandidates((pack?.c || []).filter(c => String(c.n) === number));
     if(!matches.length){
       state.votes[cfg.id] = {number,candidate:null}; saveState();
       card.querySelector('[data-info]').innerHTML='<div class="lookup-message error">Número não encontrado na base sincronizada. Confira o número ou atualize os dados do TSE.</div>';
@@ -122,6 +153,55 @@
     const box=card.querySelector('[data-matches]');
     box.innerHTML=`<div class="multi-match">${matches.map((c,i)=>`<button type="button" data-match="${i}"><strong>${escapeHtml(c.u||'Sem nome')}</strong> · ${escapeHtml(c.p||'')}</button>`).join('')}</div>`;
     box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>selectCandidate(cfg,card,number,matches[Number(btn.dataset.match)])));
+  }
+
+  async function onNameInput(cfg,card,input){
+    const raw=input.value;
+    const query=normalizeSearch(raw);
+    const box=card.querySelector('[data-matches]');
+    if(!query){ box.innerHTML=''; return; }
+    if(!state.uf && cfg.scope==='uf'){
+      box.innerHTML='<div class="lookup-message error">Selecione sua UF antes de pesquisar pelo nome.</div>'; return;
+    }
+    if(query.length<2){
+      box.innerHTML='<div class="lookup-message">Digite pelo menos 2 letras para pesquisar.</div>'; return;
+    }
+    const key=dataKey(cfg,state.uf);
+    try{ await ensureData(key); }
+    catch{
+      box.innerHTML='<div class="lookup-message error">A base deste cargo ainda não está disponível. Execute a sincronização do TSE no projeto.</div>'; return;
+    }
+    // Evita exibir resultados de uma consulta antiga se o usuário continuar digitando enquanto o arquivo carrega.
+    if(normalizeSearch(input.value)!==query) return;
+    const pack=window.__TSE_DATA__?.[key];
+    const candidates=uniqueCandidates(pack?.c||[]);
+    const scored=[];
+    for(const c of candidates){
+      const urna=normalizeSearch(c.u||'');
+      const completo=normalizeSearch(c.f||'');
+      let score=0;
+      if(urna===query || completo===query) score=100;
+      else if(urna.startsWith(query)) score=80;
+      else if(completo.startsWith(query)) score=70;
+      else if(urna.includes(query)) score=55;
+      else if(completo.includes(query)) score=45;
+      if(score) scored.push({c,score});
+    }
+    scored.sort((a,b)=>b.score-a.score || String(a.c.u||'').localeCompare(String(b.c.u||''),'pt-BR') || String(a.c.n||'').localeCompare(String(b.c.n||''),'pt-BR',{numeric:true}));
+    const matches=scored.slice(0,12).map(x=>x.c);
+    if(!matches.length){
+      box.innerHTML='<div class="lookup-message error">Nenhuma candidatura encontrada com esse nome neste cargo.</div>'; return;
+    }
+    box.innerHTML=`<div class="search-summary">${matches.length}${scored.length>matches.length?` de ${scored.length}`:''} resultado(s)</div><div class="multi-match name-results">${matches.map((c,i)=>{
+      const full=c.f && normalizeSearch(c.f)!==normalizeSearch(c.u) ? `<small>${escapeHtml(c.f)}</small>`:'';
+      return `<button type="button" data-match="${i}"><span><strong>${escapeHtml(c.u||'Sem nome')}</strong>${full}</span><span class="match-meta">${escapeHtml(c.n||'')} · ${escapeHtml(c.p||'')}</span></button>`;
+    }).join('')}</div>`;
+    box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+      const candidate=matches[Number(btn.dataset.match)];
+      selectCandidate(cfg,card,String(candidate.n||''),candidate);
+      const numberInput=card.querySelector('[data-number]'); if(numberInput) numberInput.value=String(candidate.n||'');
+      input.value='';
+    }));
   }
 
   function selectCandidate(cfg,card,number,candidate){

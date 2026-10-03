@@ -34,7 +34,7 @@ function recordFrom(row, idx){
   const get=(name)=>clean(row[idx.get(name)]);
   return {
     uf:get('SG_UF'), cargo:get('CD_CARGO'), n:get('NR_CANDIDATO'), u:get('NM_URNA_CANDIDATO'),
-    p:get('SG_PARTIDO'), pn:get('NM_PARTIDO'), sq:get('SQ_CANDIDATO'), s:get('DS_SITUACAO_CANDIDATURA'),
+    f:get('NM_CANDIDATO'), p:get('SG_PARTIDO'), pn:get('NM_PARTIDO'), sq:get('SQ_CANDIDATO'), s:get('DS_SITUACAO_CANDIDATURA'),
     generationDate:get('DT_GERACAO'), generationTime:get('HH_GERACAO')
   };
 }
@@ -42,7 +42,9 @@ function recordFrom(row, idx){
 export async function build(inputDir, outputDir){
   const files=await csvFiles(inputDir);
   if(!files.length) throw new Error('Nenhum consulta_cand_2026_*.csv encontrado no diretório extraído.');
-  const packs=new Map(); let latestGeneration=''; let total=0;
+  // Alguns ZIPs do TSE podem trazer o mesmo registro em mais de um CSV (por exemplo,
+  // arquivo consolidado + arquivo por UF). Guardar por SQ_CANDIDATO evita sugestões duplicadas.
+  const packs=new Map(); let latestGeneration='';
   const decoder=new TextDecoder('windows-1252');
 
   for(const file of files){
@@ -58,16 +60,18 @@ export async function build(inputDir, outputDir){
       const cargo=clean(row[idx.get('CD_CARGO')]); if(!RELEVANT.has(cargo)) continue;
       const rec=recordFrom(row,idx); if(!rec.uf||!rec.n||!rec.sq) continue;
       const key=`${rec.uf}:${rec.cargo}`;
-      if(!packs.has(key)) packs.set(key,[]);
-      packs.get(key).push({n:rec.n,u:rec.u,p:rec.p,pn:rec.pn,sq:rec.sq,s:rec.s}); total++;
+      if(!packs.has(key)) packs.set(key,new Map());
+      packs.get(key).set(rec.sq,{n:rec.n,u:rec.u,f:rec.f,p:rec.p,pn:rec.pn,sq:rec.sq,s:rec.s});
       if(rec.generationDate){ latestGeneration=`${rec.generationDate}${rec.generationTime?` ${rec.generationTime}`:''}`; }
     }
   }
 
   await fs.mkdir(outputDir,{recursive:true});
   const generatedAt=new Date().toISOString();
-  for(const [key,candidates] of packs){
+  let total=0;
+  for(const [key,candidateMap] of packs){
     const [uf,cargo]=key.split(':');
+    const candidates=[...candidateMap.values()]; total+=candidates.length;
     candidates.sort((a,b)=>a.n.localeCompare(b.n,'pt-BR',{numeric:true}) || a.u.localeCompare(b.u,'pt-BR'));
     const payload={uf,cargo:Number(cargo),generatedAt:latestGeneration||null,c:candidates};
     const js=`window.__TSE_DATA__=window.__TSE_DATA__||{};window.__TSE_DATA__[${JSON.stringify(key)}]=${JSON.stringify(payload)};\n`;
