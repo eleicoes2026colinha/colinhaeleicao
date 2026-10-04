@@ -4,7 +4,7 @@
   const YEAR = 2026;
   const ELECTION_ID = '20322002026';
   const PHOTO_BASE = `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ELECTION_ID}`;
-  const PHOTO_PROXY_BASE = 'https://wsrv.nl/?url=';
+  const PHOTO_PROXY_BASE = 'https://images.weserv.nl/?url=';
 
   const UFS = [
     ['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']
@@ -53,7 +53,7 @@
   function photoProxyUrl(url){
     if(!url) return '';
     const clean = String(url).replace(/^https?:\/\//,'');
-    return `${PHOTO_PROXY_BASE}${encodeURIComponent(clean)}&w=360&h=480&fit=cover&default=404&output=jpg`;
+    return `${PHOTO_PROXY_BASE}${encodeURIComponent(clean)}&w=360&h=480&fit=cover&output=jpg&q=92`;
   }
   function hasVote(v){ return !!(v && (v.number || v.candidate)); }
   function meaningfulStatus(s=''){ const t=String(s).trim(); return t && !t.startsWith('#') ? t : ''; }
@@ -397,15 +397,15 @@
   }
 
   async function tryFetchCanvasPhoto(url){
-    const res=await fetch(url,{mode:'cors',cache:'force-cache'});
+    const res=await fetch(url,{mode:'cors',cache:'no-cache'});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob=await res.blob();
-    if(!blob || !blob.size) throw new Error('Imagem vazia');
+    if(!blob || !blob.size || !String(blob.type||'').startsWith('image/')) throw new Error('Resposta não é uma imagem válida');
     return blobToImage(blob);
   }
 
   async function loadCanvasPhoto(url){
-    const attempts=[url, photoProxyUrl(url)];
+    const attempts=[photoProxyUrl(url), url];
     for(const candidateUrl of attempts){
       if(!candidateUrl) continue;
       try { return await tryFetchCanvasPhoto(candidateUrl); } catch {}

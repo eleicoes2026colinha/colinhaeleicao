@@ -92,4 +92,8 @@ Este é um projeto independente. Não recomenda candidaturas e não possui vínc
 
 ## Exportação com fotos nas redes sociais
 
-A geração do card social tenta obter a foto oficial diretamente do TSE. Quando o navegador bloquear a leitura da imagem para o canvas por política de CORS, o aplicativo usa automaticamente um proxy público de imagem apenas para montar o card de compartilhamento. A interface principal continua usando a foto oficial do TSE normalmente.
+A geração do card social tenta obter a foto oficial diretamente do TSE. Quando o navegador bloquear a leitura da imagem para o canvas por política de CORS, o aplicativo usa automaticamente um proxy CORS de imagem (images.weserv.nl) apenas para montar o card de compartilhamento. A interface principal continua usando a foto oficial do TSE normalmente.
+
+
+### Correção da exportação de fotos (v8)
+A exportação social usa `https://images.weserv.nl` como ponte CORS para transformar a foto oficial do TSE em um Blob que pode ser desenhado no Canvas e exportado como PNG. A tentativa via ponte ocorre antes da leitura direta do TSE, evitando o fallback com apenas a inicial do candidato.
