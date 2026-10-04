@@ -96,3 +96,8 @@ A versão atual não depende de proxy de imagens. Durante o workflow, o GitHub A
 A tela de preenchimento tenta primeiro a miniatura local e, caso ela ainda não exista, volta automaticamente para a foto direta do DivulgaCand. Já o card de redes sociais usa exclusivamente a miniatura local, evitando CORS e permitindo a exportação do Canvas em PNG.
 
 Na primeira execução, o workflow pode levar mais tempo porque precisa montar o cache inicial de fotografias. As execuções seguintes restauram o cache do GitHub Actions e consultam os metadados dos pacotes para reprocesar apenas UFs alteradas.
+
+
+## Busca numérica inteligente
+
+O campo unificado também faz pesquisa progressiva por número. A cada algarismo digitado, o site sugere candidaturas do cargo atual, priorizando números que começam com a sequência informada. Com um número completo, uma correspondência única é selecionada automaticamente. Se o número completo não existir, são sugeridos números próximos, inclusive com tolerância limitada a erros de digitação.

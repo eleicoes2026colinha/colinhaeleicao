@@ -173,12 +173,14 @@
       const number=raw.replace(/\D/g,'').slice(0,cfg.digits);
       if(input.value!==number) input.value=number;
       clearCurrentSelection(cfg,card,number);
-      if(number.length<cfg.digits){
-        info.innerHTML=`<div class="lookup-message">Faltam ${cfg.digits-number.length} dígito(s) para completar o número.</div>`;
+      if(!number){
+        info.innerHTML='<div class="lookup-message">Digite um número ou nome para pesquisar.</div>';
         return;
       }
-      info.innerHTML='<div class="lookup-message">Consultando os dados sincronizados do TSE…</div>';
-      await resolveCandidate(cfg,card,number,input);
+      info.innerHTML=number.length<cfg.digits
+        ? `<div class="lookup-message">Pesquisando pelos ${number.length} dígito(s) informados…</div>`
+        : '<div class="lookup-message">Conferindo o número e procurando correspondências…</div>';
+      await resolveByNumber(cfg,card,input,number);
       return;
     }
 
@@ -190,6 +192,103 @@
     }
     info.innerHTML='<div class="lookup-message">Pesquisando candidaturas…</div>';
     await resolveByName(cfg,card,input,query);
+  }
+
+  function numericEditDistance(a='',b=''){
+    a=String(a); b=String(b);
+    const dp=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
+    for(let i=0;i<=a.length;i++) dp[i][0]=i;
+    for(let j=0;j<=b.length;j++) dp[0][j]=j;
+    for(let i=1;i<=a.length;i++){
+      for(let j=1;j<=b.length;j++){
+        const cost=a[i-1]===b[j-1]?0:1;
+        dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+cost);
+      }
+    }
+    return dp[a.length][b.length];
+  }
+
+  function numericCandidateScore(candidateNumber,query,totalDigits){
+    const n=String(candidateNumber||'').replace(/\D/g,'');
+    const q=String(query||'').replace(/\D/g,'');
+    if(!n||!q) return 0;
+    if(n===q) return 2000;
+    if(n.startsWith(q)) return 1500 + q.length*25;
+    if(n.includes(q)) return 1050 + q.length*15;
+
+    // Quando já há pelo menos dois algarismos, tolera um erro de digitação
+    // comparando a sequência informada com o início do número oficial.
+    if(q.length>=2){
+      const prefix=n.slice(0,Math.min(q.length,n.length));
+      const d=numericEditDistance(q,prefix);
+      if(d===1) return 760 + q.length*10;
+    }
+
+    // Para um número completo incorreto, sugere números oficiais muito próximos.
+    if(q.length===totalDigits && n.length===totalDigits){
+      const d=numericEditDistance(q,n);
+      if(d===1) return 900;
+      if(d===2) return 520;
+      const diff=Math.abs(Number(n)-Number(q));
+      if(Number.isFinite(diff) && diff<=10) return 460-diff;
+    }
+    return 0;
+  }
+
+  async function resolveByNumber(cfg,card,input,query){
+    const box=card.querySelector('[data-matches]');
+    const info=card.querySelector('[data-info]');
+    const key=dataKey(cfg,state.uf);
+    try{ await ensureData(key); }
+    catch{
+      info.innerHTML='<div class="lookup-message error">A base deste cargo ainda não está disponível. Execute a sincronização do TSE no projeto.</div>'; return;
+    }
+    const live=input.value.replace(/\D/g,'').slice(0,cfg.digits);
+    if(live!==query) return;
+
+    const pack=window.__TSE_DATA__?.[key];
+    const candidates=uniqueCandidates(pack?.c||[]);
+    const exact=candidates.filter(c=>String(c.n||'')===query);
+
+    // Número completo e único: mantém a seleção automática já esperada.
+    if(query.length===cfg.digits && exact.length===1){
+      selectCandidate(cfg,card,query,exact[0],input); return;
+    }
+    if(query.length===cfg.digits && exact.length>1){
+      info.innerHTML='<div class="lookup-message">Há mais de um registro com esse número. Selecione a candidatura correta.</div>';
+      box.innerHTML=`<div class="search-summary">${exact.length} correspondência(s) exata(s)</div><div class="multi-match name-results">${exact.map((c,i)=>candidateMatchButton(c,i)).join('')}</div>`;
+      box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+        const candidate=exact[Number(btn.dataset.match)];
+        selectCandidate(cfg,card,String(candidate.n||''),candidate,input);
+      }));
+      return;
+    }
+
+    const scored=[];
+    for(const c of candidates){
+      const score=numericCandidateScore(c.n,query,cfg.digits);
+      if(score) scored.push({c,score});
+    }
+    scored.sort((a,b)=>b.score-a.score || String(a.c.n||'').localeCompare(String(b.c.n||''),'pt-BR',{numeric:true}) || String(a.c.u||'').localeCompare(String(b.c.u||''),'pt-BR'));
+    const matches=scored.slice(0,12).map(x=>x.c);
+
+    if(!matches.length){
+      info.innerHTML=query.length<cfg.digits
+        ? `<div class="lookup-message error">Nenhuma candidatura encontrada a partir de <strong>${escapeHtml(query)}</strong>. Tente outro número ou pesquise pelo nome.</div>`
+        : '<div class="lookup-message error">Número não encontrado. Tente corrigir algum dígito ou pesquise pelo nome.</div>';
+      box.innerHTML=''; return;
+    }
+
+    const exactPrefix=matches.filter(c=>String(c.n||'').startsWith(query)).length;
+    const remaining=Math.max(0,cfg.digits-query.length);
+    info.innerHTML=query.length<cfg.digits
+      ? `<div class="lookup-message">${exactPrefix?`${exactPrefix} candidatura(s) começam com <strong>${escapeHtml(query)}</strong>. `:''}${remaining?`Faltam ${remaining} dígito(s), ou você já pode selecionar abaixo.`:'Selecione uma candidatura abaixo.'}</div>`
+      : '<div class="lookup-message">O número exato não foi encontrado. Estas são as correspondências numéricas mais próximas.</div>';
+    box.innerHTML=`<div class="search-summary">${matches.length}${scored.length>matches.length?` de ${scored.length}`:''} sugestão(ões)</div><div class="multi-match name-results numeric-results">${matches.map((c,i)=>candidateMatchButton(c,i)).join('')}</div>`;
+    box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+      const candidate=matches[Number(btn.dataset.match)];
+      selectCandidate(cfg,card,String(candidate.n||''),candidate,input);
+    }));
   }
 
   async function resolveCandidate(cfg, card, number, searchInput=null){
