@@ -106,3 +106,18 @@ O campo unificado também faz pesquisa progressiva por número. A cada algarismo
 ## Logo
 
 Esta versão inclui um novo logo de urna eletrônica aplicado ao cabeçalho do site e aos ícones do PWA (favicon, atalho e instalação).
+
+
+## Atualização v12 — busca numérica e cache
+
+A busca por número é progressiva: ao digitar `13` em um cargo de quatro dígitos, a interface já lista candidaturas cujo número começa com `13`, sem exigir o número completo. A versão v12 também altera o PWA para usar estratégia network-first nos arquivos da aplicação e registra o Service Worker com `updateViaCache: none`, reduzindo o risco de o GitHub Pages continuar exibindo JavaScript antigo após um novo commit.
+
+## Correção dos erros 404 em `data/*.js`
+
+A versão v13 publica o site a partir de um diretório de build (`_site`) criado pelo workflow. Antes do deploy, o workflow valida a existência dos pacotes eleitorais, incluindo `BR-1.js`, `BA-3.js`, `BA-5.js`, `BA-6.js` e `BA-7.js`. Se a sincronização falhar, o deploy é interrompido em vez de publicar um site aparentemente funcional sem a base eleitoral.
+
+**Configuração obrigatória uma única vez no GitHub:** abra **Settings → Pages → Build and deployment → Source** e escolha **GitHub Actions**. Não use “Deploy from a branch” para esta arquitetura, pois a branch `main` contém apenas o `data/status.js` inicial; os arquivos `data/UF-CARGO.js` são gerados durante o workflow e existem no artefato do Pages, não na `main`.
+
+Depois, abra **Actions → Sincronizar TSE e publicar GitHub Pages → Run workflow**. No log, devem aparecer as etapas **Validar arquivos eleitorais gerados**, **Validar artefato final do Pages** e **Publicar no GitHub Pages** em verde.
+
+A sincronização de fotos agora é complementar: se o CDN das fotos falhar temporariamente, o site ainda publica os dados de candidatos e a pesquisa continua funcionando.

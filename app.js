@@ -282,7 +282,7 @@
     const exactPrefix=matches.filter(c=>String(c.n||'').startsWith(query)).length;
     const remaining=Math.max(0,cfg.digits-query.length);
     info.innerHTML=query.length<cfg.digits
-      ? `<div class="lookup-message">${exactPrefix?`${exactPrefix} candidatura(s) começam com <strong>${escapeHtml(query)}</strong>. `:''}${remaining?`Faltam ${remaining} dígito(s), ou você já pode selecionar abaixo.`:'Selecione uma candidatura abaixo.'}</div>`
+      ? `<div class="lookup-message ok">${exactPrefix?`Encontramos ${exactPrefix} candidatura(s) cujo número começa com <strong>${escapeHtml(query)}</strong>. `:''}${remaining?`Você pode continuar digitando os ${remaining} dígito(s) restantes ou selecionar uma sugestão abaixo.`:'Selecione uma candidatura abaixo.'}</div>`
       : '<div class="lookup-message">O número exato não foi encontrado. Estas são as correspondências numéricas mais próximas.</div>';
     box.innerHTML=`<div class="search-summary">${matches.length}${scored.length>matches.length?` de ${scored.length}`:''} sugestão(ões)</div><div class="multi-match name-results numeric-results">${matches.map((c,i)=>candidateMatchButton(c,i)).join('')}</div>`;
     box.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
@@ -409,14 +409,21 @@
 
   function ensureData(key){
     if(window.__TSE_DATA__?.[key]) return Promise.resolve(window.__TSE_DATA__[key]);
+    const syncVersion=window.__TSE_STATUS__?.syncedAt;
+    if(!syncVersion){
+      return Promise.reject(new Error('Base eleitoral ainda não foi publicada pelo workflow do GitHub Pages.'));
+    }
     window.__TSE_DATA__=window.__TSE_DATA__||{};
     const [uf,cargo]=key.split(':');
     return new Promise((resolve,reject)=>{
       const existing=document.querySelector(`script[data-tse-key="${key}"]`);
       if(existing){ existing.addEventListener('load',()=>resolve(window.__TSE_DATA__?.[key])); existing.addEventListener('error',reject); return; }
-      const s=document.createElement('script'); s.dataset.tseKey=key; s.src=`./data/${uf}-${cargo}.js?v=${encodeURIComponent(window.__TSE_STATUS__?.syncedAt||'0')}`;
+      const s=document.createElement('script');
+      s.dataset.tseKey=key;
+      s.src=`./data/${uf}-${cargo}.js?v=${encodeURIComponent(syncVersion)}`;
       s.onload=()=>window.__TSE_DATA__?.[key]?resolve(window.__TSE_DATA__[key]):reject(new Error('Pacote de dados inválido'));
-      s.onerror=()=>reject(new Error(`Arquivo ${uf}-${cargo}.js não disponível`)); document.head.appendChild(s);
+      s.onerror=()=>reject(new Error(`Arquivo ${uf}-${cargo}.js não disponível no artefato publicado`));
+      document.head.appendChild(s);
     });
   }
 
@@ -429,7 +436,7 @@
     const failed=results.filter(r=>r.status==='rejected').length;
     if(failed){
       const synced=window.__TSE_STATUS__?.syncedAt;
-      setSource('bad','Base do TSE ainda não sincronizada', synced?`Alguns arquivos não foram gerados na última sincronização (${formatDate(synced)}).`:'Publique o projeto e execute o workflow “Sincronizar dados do TSE”, ou rode o script local de sincronização.');
+      setSource('bad', synced?'Arquivos eleitorais incompletos':'Base eleitoral não publicada', synced?`O artefato publicado está sem alguns pacotes da última sincronização (${formatDate(synced)}). Verifique o workflow do GitHub Pages.`:'O site está usando o status inicial do repositório. Em Settings → Pages, use GitHub Actions e execute o workflow de sincronização.');
     } else {
       const sourceDate=window.__TSE_STATUS__?.generatedAt || window.__TSE_STATUS__?.syncedAt;
       setSource('ok','Dados do TSE carregados',sourceDate?`Base gerada/atualizada em ${formatDate(sourceDate)}.`:'Arquivos eleitorais disponíveis para consulta.');
@@ -622,5 +629,15 @@
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!el.shareModal.hidden)closeShareModal();});
   el.backupFile.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)importBackup(f);e.target.value='';});
   loadUfData(state.uf);
-  if('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  if('serviceWorker' in navigator && location.protocol!=='file:') {
+    navigator.serviceWorker.register('./sw.js?v=12',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{});
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      try{
+        if(sessionStorage.getItem('colinha-sw-v12-reloaded')!=='1'){
+          sessionStorage.setItem('colinha-sw-v12-reloaded','1');
+          location.reload();
+        }
+      }catch{}
+    });
+  }
 })();

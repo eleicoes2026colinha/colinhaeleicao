@@ -14,12 +14,36 @@ function run(cmd,args){
   });
 }
 
+async function sleep(ms){ return new Promise(resolve=>setTimeout(resolve,ms)); }
+
 async function download(url,file){
   console.log(`Baixando base oficial do TSE:\n${url}`);
-  const res=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 ColinhaEleitoral/2.0','Accept':'application/zip,application/octet-stream,*/*'}});
-  if(!res.ok) throw new Error(`TSE respondeu HTTP ${res.status} ao baixar a base.`);
-  const buf=Buffer.from(await res.arrayBuffer()); await fs.writeFile(file,buf); console.log(`Download concluído: ${(buf.length/1024/1024).toFixed(1)} MB`);
+  let lastError=null;
+  for(let attempt=1; attempt<=5; attempt++){
+    try{
+      const res=await fetch(url,{
+        redirect:'follow',
+        headers:{
+          'User-Agent':'Mozilla/5.0 ColinhaEleitoral/4.0',
+          'Accept':'application/zip,application/octet-stream,*/*',
+          'Cache-Control':'no-cache'
+        }
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf=Buffer.from(await res.arrayBuffer());
+      if(buf.length<4 || buf[0]!==0x50 || buf[1]!==0x4b) throw new Error('resposta recebida não parece ser um ZIP');
+      await fs.writeFile(file,buf);
+      console.log(`Download concluído: ${(buf.length/1024/1024).toFixed(1)} MB`);
+      return;
+    }catch(e){
+      lastError=e;
+      console.warn(`Tentativa ${attempt}/5 falhou: ${e.message||e}`);
+      if(attempt<5) await sleep(attempt*3000);
+    }
+  }
+  throw new Error(`Não foi possível baixar a base do TSE após 5 tentativas: ${lastError?.message||lastError}`);
 }
+
 
 async function extract(zip,dest){
   await fs.mkdir(dest,{recursive:true});

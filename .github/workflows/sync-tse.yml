@@ -1,4 +1,4 @@
-name: Sincronizar dados e fotos do TSE e publicar site
+name: Sincronizar TSE e publicar GitHub Pages
 
 on:
   workflow_dispatch:
@@ -23,49 +23,113 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Baixar repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Node
+      - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Sincronizar candidaturas do TSE
+        run: node scripts/sync-tse.mjs
+
+      - name: Validar arquivos eleitorais gerados
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Arquivos gerados em data/:"
+          find data -maxdepth 1 -type f -printf '%f\n' | sort | head -80
+
+          test -s data/status.js
+          test -s data/BR-1.js
+          test -s data/BA-3.js
+          test -s data/BA-5.js
+          test -s data/BA-6.js
+          test -s data/BA-7.js
+          test -s data/photo-manifest.json
+
+          if grep -q 'syncedAt: null' data/status.js; then
+            echo 'ERRO: status.js ainda é o placeholder inicial.' >&2
+            exit 1
+          fi
+
+          COUNT=$(find data -maxdepth 1 -type f -name '*-[0-9]*.js' | wc -l)
+          echo "Pacotes eleitorais encontrados: $COUNT"
+          if [ "$COUNT" -lt 100 ]; then
+            echo 'ERRO: quantidade inesperadamente baixa de pacotes eleitorais.' >&2
+            exit 1
+          fi
 
       - name: Preparar chave diária do cache de fotos
         id: photo-key
         shell: bash
         run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
-      - name: Restaurar miniaturas oficiais já processadas
+      - name: Restaurar miniaturas já processadas
         uses: actions/cache@v4
         with:
           path: |
             photos
             .cache/tse-photo-meta.json
-          key: tse-photos-2026-v1-${{ steps.photo-key.outputs.day }}
+          key: tse-photos-2026-v2-${{ steps.photo-key.outputs.day }}
           restore-keys: |
+            tse-photos-2026-v2-
             tse-photos-2026-v1-
-
-      - name: Sincronizar candidaturas do TSE
-        run: node scripts/sync-tse.mjs
 
       - name: Instalar processador de imagens
         run: npm install --no-save --package-lock=false --no-audit --no-fund sharp@0.33.5
 
-      - name: Sincronizar e otimizar fotos oficiais do TSE
+      # Foto é um recurso complementar. Uma indisponibilidade momentânea do CDN
+      # não deve impedir que a base de candidatos e a busca sejam publicadas.
+      - name: Sincronizar fotos oficiais do TSE
+        continue-on-error: true
         run: node scripts/sync-photos.mjs
 
-      - name: Remover dependências usadas somente na compilação
-        run: rm -rf node_modules
+      - name: Montar site para publicação
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site
+
+          cp index.html app.js styles.css sw.js manifest.webmanifest icon.svg _site/
+          cp logo-urna.png logo-urna-64.png logo-urna-192.png logo-urna-512.png _site/
+          cp -a data _site/data
+
+          if [ -d photos ]; then
+            cp -a photos _site/photos
+          else
+            mkdir -p _site/photos
+          fi
+
+          touch _site/.nojekyll
+
+      - name: Validar artefato final do Pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s _site/index.html
+          test -s _site/app.js
+          test -s _site/data/status.js
+          test -s _site/data/BR-1.js
+          test -s _site/data/BA-3.js
+          test -s _site/data/BA-5.js
+          test -s _site/data/BA-6.js
+          test -s _site/data/BA-7.js
+          echo 'Conteúdo de status.js publicado:'
+          head -30 _site/data/status.js
+          echo 'Artefato pronto para o GitHub Pages.'
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Preparar artefato do site
+      - name: Enviar artefato do site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: _site
 
       - name: Publicar no GitHub Pages
         id: deployment
