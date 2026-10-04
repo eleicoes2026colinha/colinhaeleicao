@@ -1,0 +1,11 @@
+node_modules/
+_site/
+.cache/
+photos/
+*.log
+
+# A base eleitoral é gerada pelo GitHub Actions durante o deploy.
+data/*.js
+data/*.json
+!data/status.js
+!data/.gitkeep

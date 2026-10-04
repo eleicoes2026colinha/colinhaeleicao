@@ -121,3 +121,7 @@ A versão v13 publica o site a partir de um diretório de build (`_site`) criado
 Depois, abra **Actions → Sincronizar TSE e publicar GitHub Pages → Run workflow**. No log, devem aparecer as etapas **Validar arquivos eleitorais gerados**, **Validar artefato final do Pages** e **Publicar no GitHub Pages** em verde.
 
 A sincronização de fotos agora é complementar: se o CDN das fotos falhar temporariamente, o site ainda publica os dados de candidatos e a pesquisa continua funcionando.
+
+## Pacote completo — deploy pelo GitHub Actions
+
+A versão deste pacote deve ser publicada com **Settings → Pages → Source: GitHub Actions**. O workflow ativo é `.github/workflows/deploy-pages.yml`. Remova workflows antigos de sincronização/publicação para evitar concorrência. Consulte `DEPLOY.md` para o passo a passo.
