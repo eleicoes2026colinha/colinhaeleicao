@@ -1,4 +1,4 @@
-name: Sincronizar dados do TSE e publicar site
+name: Sincronizar dados e fotos do TSE e publicar site
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -32,8 +32,32 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Sincronizar candidatos do TSE
+      - name: Preparar chave diária do cache de fotos
+        id: photo-key
+        shell: bash
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar miniaturas oficiais já processadas
+        uses: actions/cache@v4
+        with:
+          path: |
+            photos
+            .cache/tse-photo-meta.json
+          key: tse-photos-2026-v1-${{ steps.photo-key.outputs.day }}
+          restore-keys: |
+            tse-photos-2026-v1-
+
+      - name: Sincronizar candidaturas do TSE
         run: node scripts/sync-tse.mjs
+
+      - name: Instalar processador de imagens
+        run: npm install --no-save --package-lock=false --no-audit --no-fund sharp@0.33.5
+
+      - name: Sincronizar e otimizar fotos oficiais do TSE
+        run: node scripts/sync-photos.mjs
+
+      - name: Remover dependências usadas somente na compilação
+        run: rm -rf node_modules
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5

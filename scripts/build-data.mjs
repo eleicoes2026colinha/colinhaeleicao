@@ -77,6 +77,16 @@ export async function build(inputDir, outputDir){
     const js=`window.__TSE_DATA__=window.__TSE_DATA__||{};window.__TSE_DATA__[${JSON.stringify(key)}]=${JSON.stringify(payload)};\n`;
     await fs.writeFile(path.join(outputDir,`${uf}-${cargo}.js`),js,'utf8');
   }
+  const photoManifest={};
+  for(const [key,candidateMap] of packs){
+    const [uf]=key.split(':');
+    if(!photoManifest[uf]) photoManifest[uf]=new Set();
+    for(const c of candidateMap.values()) if(c.sq) photoManifest[uf].add(String(c.sq));
+  }
+  const serializableManifest={};
+  for(const [uf,set] of Object.entries(photoManifest)) serializableManifest[uf]=[...set].sort();
+  await fs.writeFile(path.join(outputDir,'photo-manifest.json'),JSON.stringify({year:2026,generatedAt:latestGeneration||null,ufs:serializableManifest},null,2),'utf8');
+
   const status={syncedAt:generatedAt,generatedAt:latestGeneration||null,source:'Tribunal Superior Eleitoral — Portal de Dados Abertos',sourceUrl:SOURCE_URL,totalCandidates:total,packages:packs.size};
   await fs.writeFile(path.join(outputDir,'status.js'),`window.__TSE_STATUS__=${JSON.stringify(status,null,2)};\n`,'utf8');
   console.log(`Gerados ${packs.size} pacotes com ${total} registros de candidaturas.`);

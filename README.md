@@ -89,11 +89,10 @@ As escolhas permanecem apenas na memória da página. **Atualizar ou recarregar 
 
 Este é um projeto independente. Não recomenda candidaturas e não possui vínculo institucional com a Justiça Eleitoral. Os dados e fotografias são atribuídos às fontes públicas do Tribunal Superior Eleitoral.
 
+## Fotos oficiais e exportação social
 
-## Exportação com fotos nas redes sociais
+A versão atual não depende de proxy de imagens. Durante o workflow, o GitHub Actions baixa os pacotes oficiais de fotos de candidatos publicados pelo TSE por UF, gera miniaturas WebP e as inclui no artefato do GitHub Pages em `photos/<UF>/<SQ_CANDIDATO>.webp`.
 
-A geração do card social tenta obter a foto oficial diretamente do TSE. Quando o navegador bloquear a leitura da imagem para o canvas por política de CORS, o aplicativo usa automaticamente um proxy CORS de imagem (images.weserv.nl) apenas para montar o card de compartilhamento. A interface principal continua usando a foto oficial do TSE normalmente.
+A tela de preenchimento tenta primeiro a miniatura local e, caso ela ainda não exista, volta automaticamente para a foto direta do DivulgaCand. Já o card de redes sociais usa exclusivamente a miniatura local, evitando CORS e permitindo a exportação do Canvas em PNG.
 
-
-### Correção da exportação de fotos (v8)
-A exportação social usa `https://images.weserv.nl` como ponte CORS para transformar a foto oficial do TSE em um Blob que pode ser desenhado no Canvas e exportado como PNG. A tentativa via ponte ocorre antes da leitura direta do TSE, evitando o fallback com apenas a inicial do candidato.
+Na primeira execução, o workflow pode levar mais tempo porque precisa montar o cache inicial de fotografias. As execuções seguintes restauram o cache do GitHub Actions e consultam os metadados dos pacotes para reprocesar apenas UFs alteradas.

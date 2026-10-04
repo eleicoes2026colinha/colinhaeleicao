@@ -4,7 +4,6 @@
   const YEAR = 2026;
   const ELECTION_ID = '20322002026';
   const PHOTO_BASE = `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ELECTION_ID}`;
-  const PHOTO_PROXY_BASE = 'https://images.weserv.nl/?url=';
 
   const UFS = [
     ['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']
@@ -45,16 +44,18 @@
   function saveState(){ /* intencionalmente não persiste escolhas entre recargas */ }
   function cargoCode(cfg, uf){ return cfg.id === 'depEstadual' && uf === 'DF' ? 8 : cfg.cargo; }
   function dataKey(cfg, uf){ return cfg.scope === 'br' ? 'BR:1' : `${uf}:${cargoCode(cfg,uf)}`; }
-  function photoUrl(candidate, cfg){
+  function photoUf(cfg){ return cfg.scope === 'br' ? 'BR' : state.uf; }
+  function localPhotoUrl(candidate, cfg){
     if(!candidate?.sq) return '';
-    const photoUf = cfg.scope === 'br' ? 'BR' : state.uf;
-    return `${PHOTO_BASE}/${encodeURIComponent(candidate.sq)}/${photoUf}`;
+    const uf=photoUf(cfg);
+    return uf ? `./photos/${encodeURIComponent(uf)}/${encodeURIComponent(candidate.sq)}.webp` : '';
   }
-  function photoProxyUrl(url){
-    if(!url) return '';
-    const clean = String(url).replace(/^https?:\/\//,'');
-    return `${PHOTO_PROXY_BASE}${encodeURIComponent(clean)}&w=360&h=480&fit=cover&output=jpg&q=92`;
+  function remotePhotoUrl(candidate, cfg){
+    if(!candidate?.sq) return '';
+    const uf=photoUf(cfg);
+    return uf ? `${PHOTO_BASE}/${encodeURIComponent(candidate.sq)}/${encodeURIComponent(uf)}` : '';
   }
+  function photoUrl(candidate, cfg){ return localPhotoUrl(candidate,cfg); }
   function hasVote(v){ return !!(v && (v.number || v.candidate)); }
   function meaningfulStatus(s=''){ const t=String(s).trim(); return t && !t.startsWith('#') ? t : ''; }
   function statusWarn(s=''){ return /(INDEFER|RENÚN|FALEC|CANCEL|INAPTO|NÃO CONCORR|NAO CONCORR)/i.test(s); }
@@ -90,7 +91,7 @@
       return `<article class="vote-card${candidate ? ' is-selected' : ''}" data-id="${cfg.id}">
         <div class="order">${cfg.order}</div>
         <div class="photo-frame" data-photo>
-          ${img ? `<img src="${img}" alt="Foto de ${escapeAttr(candidate.u || '')}" loading="lazy" crossorigin="anonymous" onerror="this.parentElement.innerHTML='<span class=&quot;photo-empty&quot;>Foto indisponível</span>'">` : '<span class="photo-empty">Foto do<br>candidato</span>'}
+          ${img ? `<img src="${img}" data-remote-photo="${escapeAttr(remotePhotoUrl(candidate,cfg))}" alt="Foto de ${escapeAttr(candidate.u || '')}" loading="lazy" onerror="if(this.dataset.remotePhoto){const u=this.dataset.remotePhoto;this.dataset.remotePhoto='';this.src=u}else{this.parentElement.innerHTML='<span class=&quot;photo-empty&quot;>Foto indisponível</span>'}">` : '<span class="photo-empty">Foto do<br>candidato</span>'}
         </div>
         <div class="vote-main">
           <div class="vote-topline"><div class="vote-title">${cfg.label}</div><div class="digit-help">Número: ${cfg.digits} dígitos</div></div>
@@ -269,9 +270,13 @@
   function updateCardPhoto(card,candidate,cfg){
     const frame=card.querySelector('[data-photo]');
     if(!candidate){frame.innerHTML='<span class="photo-empty">Foto do<br>candidato</span>';return;}
-    const url=photoUrl(candidate,cfg); const img=document.createElement('img');
-    img.src=url; img.alt=`Foto de ${candidate.u||'candidato'}`; img.loading='lazy'; img.crossOrigin='anonymous';
-    img.addEventListener('error',()=>{frame.innerHTML='<span class="photo-empty">Foto indisponível</span>';});
+    const url=photoUrl(candidate,cfg), remote=remotePhotoUrl(candidate,cfg); const img=document.createElement('img');
+    img.src=url; img.alt=`Foto de ${candidate.u||'candidato'}`; img.loading='lazy';
+    let triedRemote=false;
+    img.addEventListener('error',()=>{
+      if(!triedRemote && remote){triedRemote=true;img.src=remote;return;}
+      frame.innerHTML='<span class="photo-empty">Foto indisponível</span>';
+    });
     frame.innerHTML=''; frame.appendChild(img);
   }
 
@@ -287,7 +292,7 @@
       for(let i=0;i<cfg.digits;i++) digits.push(`<span class="digit-box">${escapeHtml(number[i]||'')}</span>`);
       const p=c?photoUrl(c,cfg):'';
       return `<div class="paper-row">
-        ${p?`<img class="paper-photo" src="${p}" alt="">`:'<div class="paper-photo empty">FOTO</div>'}
+        ${p?`<img class="paper-photo" src="${p}" data-remote-photo="${escapeAttr(remotePhotoUrl(c,cfg))}" alt="" onerror="if(this.dataset.remotePhoto){const u=this.dataset.remotePhoto;this.dataset.remotePhoto='';this.src=u}else{this.outerHTML='<div class=&quot;paper-photo empty&quot;>FOTO</div>'}">`:'<div class="paper-photo empty">FOTO</div>'}
         <div><div class="paper-cargo">${escapeHtml(cfg.short)}</div><div class="paper-name">${escapeHtml(c?.u||'—')}</div><div class="paper-party">${escapeHtml(c?.p||'')}</div></div>
         <div class="digit-boxes">${digits.join('')}</div>
       </div>`;
@@ -396,21 +401,16 @@
     }
   }
 
-  async function tryFetchCanvasPhoto(url){
-    const res=await fetch(url,{mode:'cors',cache:'no-cache'});
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob=await res.blob();
-    if(!blob || !blob.size || !String(blob.type||'').startsWith('image/')) throw new Error('Resposta não é uma imagem válida');
-    return blobToImage(blob);
-  }
-
-  async function loadCanvasPhoto(url){
-    const attempts=[photoProxyUrl(url), url];
-    for(const candidateUrl of attempts){
-      if(!candidateUrl) continue;
-      try { return await tryFetchCanvasPhoto(candidateUrl); } catch {}
-    }
-    return null;
+  async function loadCanvasPhoto(candidate,cfg){
+    const url=localPhotoUrl(candidate,cfg);
+    if(!url) return null;
+    try{
+      const res=await fetch(url,{cache:'force-cache'});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob=await res.blob();
+      if(!blob || !blob.size) throw new Error('Imagem vazia');
+      return await blobToImage(blob);
+    }catch{return null;}
   }
 
   function drawCoverImage(ctx,img,x,y,w,h,r=20){
@@ -428,7 +428,7 @@
     roundRect(ctx,64,256,270,50,25,'rgba(255,255,255,.10)','rgba(255,255,255,.20)');ctx.fillStyle='#fff';ctx.font='700 22px system-ui, sans-serif';ctx.fillText('DADOS PÚBLICOS · TSE',88,289);
 
     const items=CARGOS.map(cfg=>({cfg,vote:state.votes[cfg.id]||{}}));
-    const photoLoads=await Promise.all(items.map(({cfg,vote})=>vote.candidate?loadCanvasPhoto(photoUrl(vote.candidate,cfg)):Promise.resolve(null)));
+    const photoLoads=await Promise.all(items.map(({cfg,vote})=>vote.candidate?loadCanvasPhoto(vote.candidate,cfg):Promise.resolve(null)));
     const startY=392,rowH=137,gap=10;
     for(let i=0;i<items.length;i++){
       const {cfg,vote}=items[i],c=vote.candidate; const y=startY+i*(rowH+gap);
