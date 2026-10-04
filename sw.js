@@ -1,5 +1,5 @@
 const CACHE='colinha-eleitoral-2026-tse-v9';
-const STATIC=['./','./index.html','./styles.css','./app.js','./manifest.webmanifest','./icon.svg','./data/status.js'];
+const STATIC=['./','./index.html','./styles.css','./app.js','./manifest.webmanifest','./icon.svg','./logo-urna.png','./logo-urna-64.png','./logo-urna-192.png','./logo-urna-512.png','./data/status.js'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([self.clients.claim(),caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))])));
 self.addEventListener('fetch',e=>{

@@ -101,3 +101,8 @@ Na primeira execução, o workflow pode levar mais tempo porque precisa montar o
 ## Busca numérica inteligente
 
 O campo unificado também faz pesquisa progressiva por número. A cada algarismo digitado, o site sugere candidaturas do cargo atual, priorizando números que começam com a sequência informada. Com um número completo, uma correspondência única é selecionada automaticamente. Se o número completo não existir, são sugeridos números próximos, inclusive com tolerância limitada a erros de digitação.
+
+
+## Logo
+
+Esta versão inclui um novo logo de urna eletrônica aplicado ao cabeçalho do site e aos ícones do PWA (favicon, atalho e instalação).
