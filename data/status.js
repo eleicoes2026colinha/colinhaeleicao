@@ -1,6 +1,6 @@
 window.__TSE_STATUS__={
-  "syncedAt": "2026-10-16T11:24:15.251Z",
-  "generatedAt": "16/10/2026 05:31:25",
+  "syncedAt": "2026-10-16T16:39:26.259Z",
+  "generatedAt": "16/10/2026 12:31:26",
   "source": "Tribunal Superior Eleitoral — Portal de Dados Abertos",
   "sourceUrl": "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2026.zip",
   "totalCandidates": 20065,
